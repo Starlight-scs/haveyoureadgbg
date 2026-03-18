@@ -1,0 +1,369 @@
+{
+  "name": "Stripe -> Ship.com Shipping Label",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "stripe-shipcom-label",
+        "httpMethod": "POST",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook_node",
+      "name": "Stripe Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        260,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "is_checkout_completed",
+              "leftValue": "={{$json.body?.type}}",
+              "rightValue": "checkout.session.completed",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if_checkout",
+      "name": "Only Checkout Completed",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        500,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const session = $json.body?.data?.object ?? {};\n\nconst shipping = session.shipping_details ?? {};\nconst address = shipping.address ?? {};\n\nif (!shipping.name || !address.line1 || !address.city || !address.postal_code || !address.country) {\n  throw new Error('Stripe payload is missing shipping_details fields. Ensure shipping is required in Checkout Session.');\n}\n\nreturn [\n  {\n    json: {\n      stripeEventType: $json.body?.type,\n      stripeSessionId: session.id,\n      customerEmail: session.customer_details?.email ?? session.customer_email ?? '',\n      amountTotalCents: session.amount_total ?? 0,\n      currency: session.currency ?? 'usd',\n      shipTo: {\n        name: shipping.name,\n        phone: shipping.phone ?? session.customer_details?.phone ?? '',\n        company: '',\n        address1: address.line1,\n        address2: address.line2 ?? '',\n        city: address.city,\n        state: address.state ?? '',\n        postalCode: address.postal_code,\n        country: address.country\n      }\n    }\n  }\n];"
+      },
+      "id": "extract_shipping",
+      "name": "Extract Shipping From Stripe",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        760,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://app.ship.com/public/account/token-generation",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "email",
+              "value": "={{$env.SHIP_COM_EMAIL}}"
+            },
+            {
+              "name": "password",
+              "value": "={{$env.SHIP_COM_PASSWORD}}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { email: $env.SHIP_COM_EMAIL, password: $env.SHIP_COM_PASSWORD } }}",
+        "options": {}
+      },
+      "id": "shipcom_token",
+      "name": "Ship.com Get Token",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1020,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://app.ship.com/public/order",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{`Bearer ${$json.oauth?.token ?? $json.token ?? $json.access_token}`}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n  orderNumber: $('Extract Shipping From Stripe').item.json.stripeSessionId,\n  from: {\n    name: $env.SHIP_FROM_NAME,\n    company: $env.SHIP_FROM_COMPANY ?? '',\n    phone: $env.SHIP_FROM_PHONE ?? '',\n    address1: $env.SHIP_FROM_ADDRESS1,\n    address2: $env.SHIP_FROM_ADDRESS2 ?? '',\n    city: $env.SHIP_FROM_CITY,\n    state: $env.SHIP_FROM_STATE,\n    postalCode: $env.SHIP_FROM_POSTAL_CODE,\n    country: $env.SHIP_FROM_COUNTRY ?? 'US'\n  },\n  to: $('Extract Shipping From Stripe').item.json.shipTo,\n  parcels: [\n    {\n      length: Number($env.PACKAGE_LENGTH_IN ?? 9),\n      width: Number($env.PACKAGE_WIDTH_IN ?? 6),\n      height: Number($env.PACKAGE_HEIGHT_IN ?? 1),\n      distanceUnit: 'in',\n      weight: Number($env.PACKAGE_WEIGHT_OZ ?? 12),\n      massUnit: 'oz'\n    }\n  ],\n  metadata: {\n    stripeSessionId: $('Extract Shipping From Stripe').item.json.stripeSessionId,\n    customerEmail: $('Extract Shipping From Stripe').item.json.customerEmail\n  }\n} }}",
+        "options": {}
+      },
+      "id": "shipcom_create_order",
+      "name": "Ship.com Create Order",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1270,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const order = $json;\nconst orderId = order.orderID ?? order.orderId ?? order.id ?? order._id ?? order.data?.orderID ?? order.data?.id;\n\nif (!orderId) {\n  throw new Error('Unable to find order ID in Ship.com create order response.');\n}\n\nreturn [{ json: { orderId } }];"
+      },
+      "id": "normalize_order_id",
+      "name": "Normalize Order ID",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1510,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://app.ship.com/public/shipping-info",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{`Bearer ${$('Ship.com Get Token').item.json.oauth?.token ?? $('Ship.com Get Token').item.json.token ?? $('Ship.com Get Token').item.json.access_token}`}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { orderID: $json.orderId } }}",
+        "options": {}
+      },
+      "id": "shipcom_rates",
+      "name": "Ship.com Get Rates",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1750,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const payload = $json;\nconst prices = payload.Prices ?? payload.prices ?? payload.rates ?? payload.data?.Prices ?? payload.data?.rates ?? [];\n\nif (!Array.isArray(prices) || prices.length === 0) {\n  throw new Error('No rates returned from Ship.com shipping-info endpoint.');\n}\n\nconst scored = prices\n  .map((r) => {\n    const amount = Number(r.TotalAmount ?? r.totalAmount ?? r.rate ?? r.price ?? r.amount ?? Number.POSITIVE_INFINITY);\n    return { amount, raw: r };\n  })\n  .sort((a, b) => a.amount - b.amount);\n\nconst best = scored[0].raw;\n\nconst shippingMethod = best.ShippingMethod ?? best.shippingMethod ?? best.method;\nconst serviceLevel = best.ServiceLevel ?? best.serviceLevel ?? best.service;\nconst packageID = best.PackageID ?? best.packageID ?? best.packageId;\nconst rateID = best.RateID ?? best.rateID ?? best.rateId ?? best.id;\n\nif (!shippingMethod || !serviceLevel || !packageID || !rateID) {\n  throw new Error('Rate response missing required purchase-label fields (shippingMethod, serviceLevel, packageID, rateID).');\n}\n\nreturn [{\n  json: {\n    shippingMethod,\n    serviceLevel,\n    packageID,\n    rateID\n  }\n}];"
+      },
+      "id": "pick_rate",
+      "name": "Pick Cheapest Rate",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1980,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://app.ship.com/public/purchase-label",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{`Bearer ${$('Ship.com Get Token').item.json.oauth?.token ?? $('Ship.com Get Token').item.json.token ?? $('Ship.com Get Token').item.json.access_token}`}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n  orderID: $('Normalize Order ID').item.json.orderId,\n  shippingMethod: $json.shippingMethod,\n  serviceLevel: $json.serviceLevel,\n  packageID: $json.packageID,\n  rateID: $json.rateID\n} }}",
+        "options": {}
+      },
+      "id": "purchase_label",
+      "name": "Ship.com Purchase Label",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2210,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ {\n  ok: true,\n  stripeSessionId: $('Extract Shipping From Stripe').item.json.stripeSessionId,\n  orderId: $('Normalize Order ID').item.json.orderId,\n  trackingNumber: $json.trackingNumber ?? $json.tracking ?? $json.data?.trackingNumber ?? null,\n  labelUrl: $json.labelUrl ?? $json.labelURL ?? $json.shippingLabelURL ?? $json.data?.labelUrl ?? null,\n  stripeWorkbenchEventUrl: 'https://dashboard.stripe.com/acct_1Soc9v40zXI2FAvx/test/workbench/events/evt_1T7OIa40zXI2FAvxtMOoDEpR',\n  rawShipComResponse: $json\n} }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "respond_success",
+      "name": "Respond Label Details",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        2450,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok: true, ignored: true, reason: 'Event is not checkout.session.completed' } }}",
+        "options": {
+          "responseCode": 202
+        }
+      },
+      "id": "respond_ignored",
+      "name": "Respond Ignored Event",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        760,
+        420
+      ]
+    }
+  ],
+  "connections": {
+    "Stripe Webhook": {
+      "main": [
+        [
+          {
+            "node": "Only Checkout Completed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Only Checkout Completed": {
+      "main": [
+        [
+          {
+            "node": "Extract Shipping From Stripe",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Ignored Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Shipping From Stripe": {
+      "main": [
+        [
+          {
+            "node": "Ship.com Get Token",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ship.com Get Token": {
+      "main": [
+        [
+          {
+            "node": "Ship.com Create Order",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ship.com Create Order": {
+      "main": [
+        [
+          {
+            "node": "Normalize Order ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Order ID": {
+      "main": [
+        [
+          {
+            "node": "Ship.com Get Rates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ship.com Get Rates": {
+      "main": [
+        [
+          {
+            "node": "Pick Cheapest Rate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pick Cheapest Rate": {
+      "main": [
+        [
+          {
+            "node": "Ship.com Purchase Label",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ship.com Purchase Label": {
+      "main": [
+        [
+          {
+            "node": "Respond Label Details",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "e6681c6e-4ee0-4792-a0a0-9c7fc66bd01e",
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "id": "stripe_shipcom_shipping_label",
+  "tags": []
+}
