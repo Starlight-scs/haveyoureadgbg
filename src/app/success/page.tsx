@@ -1,13 +1,14 @@
 import Link from "next/link"
 
 type SuccessPageProps = {
-  searchParams?: {
+  searchParams?: Promise<{
     session_id?: string
-  }
+  }>
 }
 
-export default function SuccessPage({ searchParams }: SuccessPageProps) {
-  const sessionId = searchParams?.session_id
+export default async function SuccessPage({ searchParams }: SuccessPageProps) {
+  const resolvedSearchParams = await searchParams
+  const sessionId = resolvedSearchParams?.session_id
 
   return (
     <main className="relative min-h-screen overflow-hidden px-4 py-20">

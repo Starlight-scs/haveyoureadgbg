@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports */
 const { withUt } = require("uploadthing/tw")
 
 /** @type {import('tailwindcss').Config} */
