@@ -3,10 +3,11 @@ import { BuyButton } from "@/components/ui/BuyButton"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
+import { getHeroVideoUrl } from "@/lib/hero-video"
 import { AlertTriangle, Laugh, Clock, Star, Quote } from "lucide-react"
 
-export default function BookLandingPage() {
-  const heroVideoUrl = process.env.NEXT_PUBLIC_HERO_VIDEO_URL
+export default async function BookLandingPage() {
+  const heroVideoUrl = await getHeroVideoUrl()
 
   const featureCards = [
     {
