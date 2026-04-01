@@ -101,6 +101,10 @@ export default async function BookLandingPage() {
                   Buy Now - $13.99
                 </BuyButton>
 
+                <p className="text-sm font-medium text-muted-foreground/80">
+                   Expected delivery: 7-14 days
+                </p>
+
                 <div className="flex items-center gap-4 text-sm">
                   <div className="flex">
                     {[...Array(5)].map((_, i) => (
@@ -231,7 +235,7 @@ export default async function BookLandingPage() {
                 </div>
 
                 <p className="text-sm opacity-70">
-                  Instant digital delivery. 30-day money-back guarantee.
+                  Expected delivery: 7-14 days. 30-day money-back guarantee.
                 </p>
               </div>
 

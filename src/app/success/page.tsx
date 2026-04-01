@@ -24,8 +24,8 @@ export default async function SuccessPage({ searchParams }: SuccessPageProps) {
             Thank you for your order
           </h1>
           <p className="mx-auto mb-6 max-w-xl text-muted-foreground">
-            Your payment was successful. You will receive shipping updates as
-            your book is processed and dispatched.
+            Your payment was successful. Your book will be delivered within 7-14 days. You will receive shipping updates as
+            it is processed and dispatched.
           </p>
 
           {sessionId ? (
