@@ -235,7 +235,7 @@ export default async function BookLandingPage() {
                 </div>
 
                 <p className="text-sm opacity-70">
-                  Expected delivery: 7-14 days. 30-day money-back guarantee.
+                  Expected delivery: 7-14 days.
                 </p>
               </div>
 
